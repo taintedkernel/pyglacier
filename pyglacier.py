@@ -240,6 +240,7 @@ class BotoGlacierJobOutput(BotoGlacierJobGeneric):
         else:
             print "[error] unknown job type: %s" % self.job_type
 
+    # TODO: This needs to be fixed
     def __str__(self):
         str_rep = super(BotoGlacierJobOutput, self).__str__() + "\n"
         str_rep += "<archives>\n"
@@ -606,26 +607,13 @@ class PyGlacier:
         uploadsize = sum( f['size'] for f in uploadfiles )
         print "using path %s, %d/%d files to upload (%d kb)\n" % (self.path, len(uploadfiles), len(files), uploadsize>>10)
 
-        #sys.stdout.flush()
-        #print '\x1b[s',
-        #sys.stdout.flush()
-        #print 'AAAA\nAAAAA\nAAAA\x1b[uBBBBBBBBBBBB'
-        #time.sleep(1)
-
         # Compute hashes
         for f in uploadfiles:
             ##f['sha256'] = "0xDEADBEEF"
             ##f['sha256'] = self.sha256(f['abspath'])
             #f['sha256'] = "[.             ]"
-            ##time.sleep(1)
-            ##sys.stdout.flush()
-            #print '\x1b[s',
-            #sys.stdout.flush()
             #print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], f['name'])
             f['sha256'] = self.treehash_sha256(f['abspath'])
-            ##time.sleep(1)
-            #print '\x1b[u',
-            #sys.stdout.flush()
             print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], f['name'])
             ##print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], self.sha256(f['abspath'])[:16], f['name'])
 
