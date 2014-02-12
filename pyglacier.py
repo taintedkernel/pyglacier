@@ -153,7 +153,7 @@ class BotoGlacierJobGeneric(object):
     def __str__(self):
         return "%s, request ID: %s>" % (str(self.__class__)[:-1], self.request_id)
 
-    def __keymap__(self, key):
+    def _keymap(self, key):
         if key in self.key_map:
             key_str = self.key_map[key]
         elif len(str(key).translate(None, string.ascii_lowercase)) <= 2:
@@ -166,10 +166,9 @@ class BotoGlacierJobGeneric(object):
     # This is where the magic happens
     def __build_class__(self, data):
         for k,v in data.items():
-            key = self.__keymap__(k)
+            key = self._keymap(k)
             #print "setting key %25s to %-25s = %s" % (k, key, v)
             setattr(self, key, v)
-            #setattr(self, self.__keymap__(k), v)
 
 
 
@@ -444,7 +443,7 @@ class PyGlacier:
             offset = 0
             while offset < size:
                 hashes.append(self.treehash_sha256_1mb(f, offset))
-                offset += 1024*1024
+                offset += 1<<20
             #print hashes
 
             # Hash and reduce
@@ -469,7 +468,7 @@ class PyGlacier:
 
 
     def treehash_sha256_1mb(self, handle, position):
-        if position % (1024*1024) != 0:
+        if position % (1<<20) != 0:
             print "[error] treehash_sha256_1mb position %d not aligned!" % position
             return None
 
@@ -479,7 +478,7 @@ class PyGlacier:
         for b in iter(partial(handle.read, 256), b''):
             #print handle.tell()
             h.update(b)
-            if handle.tell()+256 > position+1024*1024:
+            if handle.tell()+256 > position+1<<20:
                 break
 
         return h.hexdigest()
@@ -513,14 +512,13 @@ class PyGlacier:
         return key
 
 
-    def encrypt(self):
-        data = "12345ABCDEF"
-        key = self.generate_key()
+    def encrypt(self, key, plaintext):
+        #key = self.generate_key()
         iv = os.urandom(32)
         #counter = Crypto.Util.Counter.new(128, initial_value=long(iv.encode("hex"), 16))
         counter = Counter.new(128, initial_value=long(iv.encode("hex"), 16))
         cipher = AES.new(key, AES.MODE_CTR, counter=counter)
-        ciphertext = cipher.encrypt(data)
+        ciphertext = cipher.encrypt(plaintext)
         print ciphertext
 
 
@@ -606,7 +604,7 @@ class PyGlacier:
         files = self.find_files(lastrun)
         uploadfiles = [ f for f in files if f['upload'] ]
         uploadsize = sum( f['size'] for f in uploadfiles )
-        print "using path %s, %d/%d files to upload (%d kb)\n" % (self.path, len(uploadfiles), len(files), uploadsize/1024)
+        print "using path %s, %d/%d files to upload (%d kb)\n" % (self.path, len(uploadfiles), len(files), uploadsize>>10)
 
         #sys.stdout.flush()
         #print '\x1b[s',
@@ -623,13 +621,13 @@ class PyGlacier:
             ##sys.stdout.flush()
             #print '\x1b[s',
             #sys.stdout.flush()
-            #print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']/1024, f['sha256'][:16], f['name'])
+            #print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], f['name'])
             f['sha256'] = self.treehash_sha256(f['abspath'])
             ##time.sleep(1)
             #print '\x1b[u',
             #sys.stdout.flush()
-            print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']/1024, f['sha256'][:16], f['name'])
-            ##print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']/1024, f['sha256'][:16], self.sha256(f['abspath'])[:16], f['name'])
+            print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], f['name'])
+            ##print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], self.sha256(f['abspath'])[:16], f['name'])
 
         #pdb.set_trace()
 
@@ -826,7 +824,7 @@ class GlacierInterface():
 
 
     def aws_create_archive(self, file, description):
-        aws_uploader = BotoConcurrentUploader(self.boto_glacier_l1, self.vault_name, 32*1024*1024)
+        aws_uploader = BotoConcurrentUploader(self.boto_glacier_l1, self.vault_name, 32*1<<20)
         archive_id = aws_uploader.upload(file, description)
         return archive_id
 
