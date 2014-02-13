@@ -102,7 +102,7 @@ class switch(object):
         """Indicate whether or not to enter a case suite"""
         if self.fall or not args:
             return True
-        elif self.value in args: # changed for v1.5, see below
+        elif self.value in args:    # changed for v1.5, see below
             self.fall = True
             return True
         else:
@@ -143,8 +143,9 @@ def dict_pretty_print(self, data, key_map=[], key_order=[], width=22):
 
 class BotoGlacierJobGeneric(object):
     #job_key_map = {'JobId': 'ID', 'VaultARN': 'Vault', 'JobDescription': 'Description', 'ArchiveId': 'Archive ID' }
-    key_map = { 'RequestId': 'Request ID' }
+    key_map = {'RequestId': 'Request ID'}
     #key_order = [ 'RequestId' ]
+
     def __init__(self, data=None):
         #print "in __init__ %s , data=%s" % (self.__class__, data)
         if data is not None and 'RequestId' in data:
@@ -176,10 +177,10 @@ class BotoGlacierJobGeneric(object):
 # Request sent to list jobs
 # data from boto.glacier.layer1.list_jobs()
 class BotoGlacierJobList(BotoGlacierJobGeneric):
-    key_map = {'JobId': 'ID', 'VaultARN': 'vault', 'JobDescription': 'description', 'ArchiveId': 'archive_id' }
+    key_map = {'JobId': 'ID', 'VaultARN': 'vault', 'JobDescription': 'description', 'ArchiveId': 'archive_id'}
     #key_order = [ 'JobId', 'VaultARN', 'Action', 'JobDescription', 'StatusCode', 'StatusMessage', 'Completed', 'CreationDate', 'CompletionDate', 'InventorySizeInBytes' ]
-    def __init__(self):
-        self.job_list = []
+#    def __init__(self):
+#        self.job_list = []
 
     def __init__(self, data):
         self.job_list = []
@@ -199,7 +200,8 @@ class BotoGlacierJobList(BotoGlacierJobGeneric):
 
 # Job returned in JobList list from boto.glacier.layer1.list_jobs()
 class BotoGlacierJobListJob(BotoGlacierJobGeneric):
-    key_map = {'JobId':'job_id', 'VaultARN':'vault', 'JobDescription':'description', 'ArchiveId':'archive_id', 'InventorySizeInBytes':'inventory_size', 'ArchiveSizeInBytes':'archive_size', 'SNSTopic':'sns_topic', 'RetrievalByteRange':'retrieval_byte_range', 'SHA256TreeHash':'sha256_treehash', 'ArchiveSHA256TreeHash':'archive_sha256_treehash' }
+    key_map = {'JobId':'job_id', 'VaultARN':'vault', 'JobDescription':'description', 'ArchiveId':'archive_id', 'InventorySizeInBytes':'inventory_size', 'ArchiveSizeInBytes':'archive_size', 'SNSTopic':'sns_topic', 'RetrievalByteRange':'retrieval_byte_range', 'SHA256TreeHash':'sha256_treehash', 'ArchiveSHA256TreeHash':'archive_sha256_treehash'}
+
     def __init__(self, data):
         super(BotoGlacierJobListJob, self).__init__()
         super(BotoGlacierJobListJob, self).__build_class__(data)
@@ -210,9 +212,9 @@ class BotoGlacierJobListJob(BotoGlacierJobGeneric):
 
 # Either vault inventory or content of archive
 class BotoGlacierJobOutput(BotoGlacierJobGeneric):
-    def __init__(self):
-        super(BotoGlacierJobOutput, self).__init__()
-        self.job_type = None
+#    def __init__(self):
+#        super(BotoGlacierJobOutput, self).__init__()
+#        self.job_type = None
 
     def __init__(self, data):
         super(BotoGlacierJobOutput, self).__init__(data)
@@ -252,15 +254,15 @@ class BotoGlacierJobOutput(BotoGlacierJobGeneric):
 
 
 class BotoGlacierArchiveItem(BotoGlacierJobGeneric):
-    key_map = {'ArchiveDescription': 'archive_desc', 'SHA256TreeHash': 'sha256_treehash' }
+    key_map = {'ArchiveDescription': 'archive_desc', 'SHA256TreeHash': 'sha256_treehash'}
 
-    def __init__(self):
-        self.archive_id = None
-        self.archive_desc = None
-        self.creation_date = None
-        self.sha256_treehash = None
-        self.mtime = 0
-        self.size = 0
+#    def __init__(self):
+#        self.archive_id = None
+#        self.archive_desc = None
+#        self.creation_date = None
+#        self.sha256_treehash = None
+#        self.mtime = 0
+#        self.size = 0
 
     # Archive description version revisions:
     # Unversioned = "size-mtime-sha256" (deprecated)
@@ -405,14 +407,13 @@ class PyGlacier:
             self.files_table = sa.Table('files', self.metadata, autoload='True')
         except sa.exc.NoSuchTableError:
             print "[warning] files table missing, creating"
+            #sa.Column('id',sa.Integer,primary_key=True),
             self.files_table = sa.Table('files', self.metadata,
-                #sa.Column('id',sa.Integer,primary_key=True),
                 sa.Column('archiveid',sa.String(255),primary_key=True),
                 sa.Column('filename',sa.String(255),nullable=False),
                 sa.Column('utime',sa.Integer),
                 sa.Column('mtime',sa.Integer),
-                sa.Column('sha256',sa.String(64))
-            )
+                sa.Column('sha256',sa.String(64)))
             self.metadata.create_all()
 
         if self.op == GLACIER_UPLOAD:
@@ -444,32 +445,32 @@ class PyGlacier:
             offset = 0
             while offset < size:
                 hashes.append(self.treehash_sha256_1mb(f, offset))
-                offset += 1<<20
+                offset += 1 << 20
             #print hashes
 
             # Hash and reduce
             index = 0
             while True:
                 pos = 0
-                while pos+2**index < len(hashes):
+                while pos + (2 ** index) < len(hashes):
                     h.update(hashes[pos])
-                    h.update(hashes[pos+2**index])
-                    for i in range(pos+1, pos+2**index+1):
+                    h.update(hashes[pos + (2 ** index)])
+                    for i in range(pos + 1, pos + (2 ** index) + 1):
                         hashes[i] = None
                     hashes[pos] = h.hexdigest()
                     h = hashlib.sha256()
-                    pos += 2**(index+1)
+                    pos += 2 ** (index + 1)
 
                 #print hashes
                 index += 1
-                if len(hashes) <= 2**index:
+                if len(hashes) <= 2 ** index:
                     break
 
         return hashes[0]
 
 
     def treehash_sha256_1mb(self, handle, position):
-        if position % (1<<20) != 0:
+        if position % (1 << 20) != 0:
             print "[error] treehash_sha256_1mb position %d not aligned!" % position
             return None
 
@@ -479,7 +480,7 @@ class PyGlacier:
         for b in iter(partial(handle.read, 256), b''):
             #print handle.tell()
             h.update(b)
-            if handle.tell()+256 > position+1<<20:
+            if handle.tell() + 256 > position + 1 << 20:
                 break
 
         return h.hexdigest()
@@ -603,9 +604,9 @@ class PyGlacier:
         #print lastrun
         lastrun = self.get_last_run()
         files = self.find_files(lastrun)
-        uploadfiles = [ f for f in files if f['upload'] ]
-        uploadsize = sum( f['size'] for f in uploadfiles )
-        print "using path %s, %d/%d files to upload (%d kb)\n" % (self.path, len(uploadfiles), len(files), uploadsize>>10)
+        uploadfiles = [f for f in files if f['upload']]
+        uploadsize = sum(f['size'] for f in uploadfiles)
+        print "using path %s, %d/%d files to upload (%d kb)\n" % (self.path, len(uploadfiles), len(files), uploadsize >> 10)
 
         # Compute hashes
         for f in uploadfiles:
@@ -614,7 +615,7 @@ class PyGlacier:
             #f['sha256'] = "[.             ]"
             #print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], f['name'])
             f['sha256'] = self.treehash_sha256(f['abspath'])
-            print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], f['name'])
+            print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size'] >> 10, f['sha256'][:16], f['name'])
             ##print "%s  %6d kb  %s  %s" % (time.strftime("%c", f['mtime']), f['size']>>10, f['sha256'][:16], self.sha256(f['abspath'])[:16], f['name'])
 
         #pdb.set_trace()
@@ -629,7 +630,7 @@ class PyGlacier:
             #archive_desc = "V01|%s|%d|%d|%s" % (f['name'].replace('|', '\\|'), calendar.timegm(f['mtime']), self.start_time, f['sha256'])
             print "using archive description: %s" % archive_desc
             archive_id = "0xDEADC0DE"
-            print "starting upload...";
+            print "starting upload..."
             pdb.set_trace()
             archive_id = self.boto_glacier.aws_create_archive(f['abspath'], archive_desc)
             print "upload finished, archive ID: %s" % archive_id
@@ -687,8 +688,8 @@ class PyGlacier:
     def list_jobs(self):
         """ List jobs on vault """
         DISP_JOB_WIDTH = 22
-        job_key_map = {'JobId': 'ID', 'VaultARN': 'Vault', 'JobDescription': 'Description', 'ArchiveId': 'Archive ID' }
-        job_key_order = [ 'JobId', 'VaultARN', 'Action', 'JobDescription', 'StatusCode', 'StatusMessage', 'Completed', 'CreationDate', 'CompletionDate', 'InventorySizeInBytes' ]
+        job_key_map = {'JobId': 'ID', 'VaultARN': 'Vault', 'JobDescription': 'Description', 'ArchiveId': 'Archive ID'}
+        job_key_order = ['JobId', 'VaultARN', 'Action', 'JobDescription', 'StatusCode', 'StatusMessage', 'Completed', 'CreationDate', 'CompletionDate', 'InventorySizeInBytes']
         print "querying job listing..."
         jobs = self.boto_glacier.aws_list_jobs()
 
@@ -729,8 +730,8 @@ class PyGlacier:
     def job_output_inventory(self, jobid):
         """ Retrieve output of vault inventory job """
         DISP_JOB_WIDTH = 22
-        archive_key_map = {'ArchiveId': 'ID', 'ArchiveDescription': 'Description' }
-        archive_key_order = [ 'ArchiveId', 'ArchiveDescription', 'CreationDate', 'Size' ]
+        archive_key_map = {'ArchiveId': 'ID', 'ArchiveDescription': 'Description'}
+        archive_key_order = ['ArchiveId', 'ArchiveDescription', 'CreationDate', 'Size']
         print "querying inventory job status..."
         try:
             job_status = self.boto_glacier.aws_job_output_inventory(jobid)
@@ -812,7 +813,7 @@ class GlacierInterface():
 
 
     def aws_create_archive(self, file, description):
-        aws_uploader = BotoConcurrentUploader(self.boto_glacier_l1, self.vault_name, 32*1<<20)
+        aws_uploader = BotoConcurrentUploader(self.boto_glacier_l1, self.vault_name, 32 * (1 << 20))
         archive_id = aws_uploader.upload(file, description)
         return archive_id
 
@@ -828,12 +829,12 @@ class GlacierInterface():
 
 
     def aws_job_start_download(self, archive_id):
-        job_id = self.boto_glacier_l1.initiate_job(self.vault_name, { "Description":"download-job", "Type":"archive-retrieval", "ArchiveId":"%s" % archive_id })
+        job_id = self.boto_glacier_l1.initiate_job(self.vault_name, {"Description":"download-job", "Type":"archive-retrieval", "ArchiveId":"%s" % archive_id})
         return job_id
 
 
     def aws_job_start_inventory(self):
-        job_id = self.boto_glacier_l1.initiate_job(self.vault_name, { "Description":"inventory-job", "Type":"inventory-retrieval", "Format":"JSON" })
+        job_id = self.boto_glacier_l1.initiate_job(self.vault_name, {"Description":"inventory-job", "Type":"inventory-retrieval", "Format":"JSON"})
         return job_id
 
 
