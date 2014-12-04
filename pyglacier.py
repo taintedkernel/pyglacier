@@ -47,9 +47,9 @@ import os
 import sys
 import ast
 import pdb
-import xattr
 import base64
-import getopt
+#import getopt
+import argparse
 import string
 import hashlib
 import getpass
@@ -60,18 +60,36 @@ from functools import partial
 
 import ConfigParser
 
-import sqlalchemy as sa
+try:
+    import xattr
+except ImportError:
+    print '[error] please install xattr module (pip install xattr?)'
+    sys.exit(1)
 
-from Crypto.Cipher import AES
-from Crypto.Util import Counter
-from Crypto.Protocol.KDF import PBKDF2
+try:
+    import sqlalchemy as sa
+except ImportError:
+    print '[error] please install sqlalchemy module (pip install sqlalchemy?)'
+    sys.exit(1)
 
-from boto.glacier import exceptions as BotoExceptions
-#from boto.glacier.job import Job as BotoJob
-#from boto.glacier.vault import Vault as BotoVault
-from boto.glacier.layer1 import Layer1 as BotoLayer1
-from boto.glacier.layer2 import Layer2 as BotoLayer2
-from boto.glacier.concurrent import ConcurrentUploader as BotoConcurrentUploader
+try:
+    from Crypto.Cipher import AES
+    from Crypto.Util import Counter
+    from Crypto.Protocol.KDF import PBKDF2
+except ImportError:
+    print '[error] please install pycrypto module (pip install pycrypto?)'
+    sys.exit(1)
+
+try:
+    from boto.glacier import exceptions as BotoExceptions
+    #from boto.glacier.job import Job as BotoJob
+    #from boto.glacier.vault import Vault as BotoVault
+    from boto.glacier.layer1 import Layer1 as BotoLayer1
+    from boto.glacier.layer2 import Layer2 as BotoLayer2
+    from boto.glacier.concurrent import ConcurrentUploader as BotoConcurrentUploader
+except ImportError:
+    print '[error] please install boto module (pip install boto?)'
+    sys.exit(1)
 
 
 GLACIER_UPLOAD = 1
@@ -334,53 +352,95 @@ class BotoGlacierArchiveItem(BotoGlacierJobGeneric):
         return "%s, version: %d, filename: %s, size: %s, creation_date: %s, archive_id: %s, archive_desc: %s>" % (str(self.__class__)[:-1], self.metadata_ver, self.filename, self.size, self.creation_date, self.archive_id, self.archive_desc)
 
 
+def store_const_store(action_value):
+    class StoreConstStore(argparse.Action):
+#        def __init__(self, *args, **kwargs):
+#            self.action_value = kwargs.pop('action')
+#            super(StoreConstStore, self).__init__(self, *args, **kwargs)
+        def __call__(self, parser, args, values, option_string=None):
+            #print 'in __call__():'
+            #print 'args', args
+            #print 'self', self
+            #print 'values', values
+            #print 'self.dest', self.dest
+            setattr(args, self.dest, values)
+            setattr(args, 'op', action_value)
+
+    return StoreConstStore
 
 
 class PyGlacier:
-    """ do stuff """
+    """pyglacier: A Python wrapper/daemon around the Amazon Glacier API
+
+    usage: pyglacier
+    """
 
     def __init__(self):
-        self.dryrun = False
-        self.recursive = False
-        self.op = GLACIER_UPLOAD
         # parse command line options
-        try:
-            opts, args = getopt.getopt(sys.argv[1:], "hgenR:up:lq:rid:v:w:", ["help", "--generate-key", "path", "list-jobs", "query-job", "download", "remove", "inventory"])
-        except getopt.error, msg:
-            print msg
-            print "for help use --help"
-            sys.exit(2)
-        # process options
-        for o, a in opts:
-            if o in ("-h", "--help"):
-                print __doc__
-                sys.exit(0)
-            if o in ("-g", "--generate-key"):
-                self.op = PYGLACIER_GEN_KEY
-            if o in ("-e", "--encrypt"):
-                self.op = PYGLACIER_ENCRYPT
-            if o in ("-p", "--path"):
-                self.path = a
-            if o in ("-r", "--recursive"):
-                self.recursive = True
-            if o in ("-n", "--dry-run"):
-                self.dryrun = True
-            if o in ("-l", "--list-jobs"):
-                self.op = GLACIER_LIST_JOBS
-            if o in ("-i", "--inventory-job"):
-                self.op = GLACIER_JOB_INVENTORY
-            if o in ("-d", "--download-job"):
-                self.op = GLACIER_JOB_DOWNLOAD
-                self.archive_id = a
-            if o in ("-v", "--output-inVentory"):
-                self.op = GLACIER_JOB_OUTPUT_INVENTORY
-                self.jobid = a
-            if o in ("-w", "--output-doWnload"):
-                self.op = GLACIER_JOB_OUTPUT_DOWNLOAD
-                self.jobid = a
-            if o in ("-R", "--Remove"):
-                self.op = GLACIER_ARCHIVE_REMOVE
-                self.archive_id = a
+        parser = argparse.ArgumentParser(description='A Python wrapper/daemon around the Amazon Glacier API')
+        parser.add_argument('--path', '-p', action='store', help='path to manage')
+        parser.add_argument('--recursive', '-r', action='store_true', default=False, help='search for files recursively')
+        parser.add_argument('--dry-run', '-n', action='store_true', default=False, help='simulate execution (dry-run mode)')
+
+        action = parser.add_mutually_exclusive_group(required=True)
+        action.add_argument('--upload', '-u', action='store_const', const=GLACIER_UPLOAD, dest='op', help='list currently open jobs')
+        action.add_argument('--list-jobs', '-l', action='store_const', const=GLACIER_LIST_JOBS, dest='op', help='list currently open jobs')
+        action.add_argument('--inventory-job', '-i', action='store_const', const=GLACIER_JOB_INVENTORY, dest='op', help='start an inventory request job')
+        action.add_argument('--download-job', '-d', action=store_const_store(GLACIER_JOB_DOWNLOAD), dest='archive_id', help='start a job to download an archive')
+        action.add_argument('--output-inventory', '-v', action=store_const_store(GLACIER_JOB_OUTPUT_INVENTORY), dest='job_id', help='display results of inventory job')
+        action.add_argument('--output-download', '-w', action=store_const_store(GLACIER_JOB_OUTPUT_DOWNLOAD), dest='job_id', help='retrieve data from archive download job')
+        action.add_argument('--remove-archive', '-R', action=store_const_store(GLACIER_ARCHIVE_REMOVE), dest='archive_id', help='remove an archive')
+        action.add_argument('--generate-key', '-g', action='store_const', const=PYGLACIER_GEN_KEY, dest='op', help='generate a key')
+        action.add_argument('--encrypt', '-e', action='store_const', const=PYGLACIER_ENCRYPT, dest='op', help='perform encryption')
+
+        args = parser.parse_args()
+        self.path = args.path
+        self.recursive = args.recursive
+        self.dryrun = args.dry_run
+        self.op = args.op
+        self.jobid = args.job_id
+        self.archive_id = args.archive_id
+
+
+#        try:
+#            opts, args = getopt.getopt(sys.argv[1:], "hgenR:up:lq:rid:v:w:", ["help", "--generate-key", "path", "list-jobs", "query-job", "download", "remove", "inventory"])
+#        except getopt.error, msg:
+#            print msg
+#            print "for help use --help"
+#            sys.exit(2)
+#
+#        # process options
+#        for o, a in opts:
+#            if o in ("-h", "--help"):
+#                print self.__doc__
+#                sys.exit(0)
+#            if o in ("-g", "--generate-key"):
+#                self.op = PYGLACIER_GEN_KEY
+#            if o in ("-e", "--encrypt"):
+#                self.op = PYGLACIER_ENCRYPT
+#            if o in ("-p", "--path"):
+#                self.path = a
+#            if o in ("-r", "--recursive"):
+#                self.recursive = True
+#            if o in ("-n", "--dry-run"):
+#                self.dryrun = True
+#            if o in ("-l", "--list-jobs"):
+#                self.op = GLACIER_LIST_JOBS
+#            if o in ("-i", "--inventory-job"):
+#                self.op = GLACIER_JOB_INVENTORY
+#            if o in ("-d", "--download-job"):
+#                self.op = GLACIER_JOB_DOWNLOAD
+#                self.archive_id = a
+#            if o in ("-v", "--output-inVentory"):
+#                self.op = GLACIER_JOB_OUTPUT_INVENTORY
+#                self.jobid = a
+#            if o in ("-w", "--output-doWnload"):
+#                self.op = GLACIER_JOB_OUTPUT_DOWNLOAD
+#                self.jobid = a
+#            if o in ("-R", "--Remove"):
+#                self.op = GLACIER_ARCHIVE_REMOVE
+#                self.archive_id = a
+
     #    # process arguments
     #    for arg in args:
     #        process(arg) # process() is defined elsewhere
@@ -398,7 +458,6 @@ class PyGlacier:
         self.encrypt = config.get('options', 'encrypt')
         #self.read_config()
         self.boto_glacier = GlacierInterface(self.config)
-
 
         # Connect to DB
         self.db = sa.create_engine('sqlite:///pyglacier.db')
@@ -432,6 +491,32 @@ class PyGlacier:
             self.archive_remove(self.archive_id)
         elif self.op == PYGLACIER_GEN_KEY:
             print "key: %s" % self.generate_key().encode('hex')
+
+
+    def print_val(self, format, value):
+        if value is not None:
+            print format % value
+
+    def pretty_print(self, key_map, key_order, data, width=22):
+        for item in data:
+            for key in key_order:
+                if key in key_map:
+                    key_str = key_map[key]
+                elif len(str(key).translate(None, string.ascii_lowercase)) == 2:
+                    key_str = re.sub(r'(?<=.)([A-Z])', r' \1', key)
+                else:
+                    key_str = key
+                print "\t%*s : %s" % (-1 * width, key_str, item[key])
+
+            for key in set(item.keys()) - set(key_order):
+                if item[key] is None: continue
+                if key in key_map:
+                    key_str = key_map[key]
+                elif len(str(key).translate(None, string.ascii_lowercase)) == 2:
+                    key_str = re.sub(r'(?<=.)([A-Z])', r' \1', key)
+                else:
+                    key_str = key
+                print "\t%*s : %s" % (-1 * width, key_str, item[key])
 
 
     def treehash_sha256(self, filename):
@@ -468,7 +553,7 @@ class PyGlacier:
 
         return hashes[0]
 
-
+    #### Metadata/security functions ####
     def treehash_sha256_1mb(self, handle, position):
         if position % (1 << 20) != 0:
             print "[error] treehash_sha256_1mb position %d not aligned!" % position
@@ -485,7 +570,6 @@ class PyGlacier:
 
         return h.hexdigest()
 
-
     def sha256(self, filename):
         return self.fullhash_sha256(filename)
 
@@ -497,7 +581,6 @@ class PyGlacier:
                 h.update(b)
         return h.hexdigest()
 
-
     def md5(self, filename):
         if not os.path.isfile(filename): return None
         with open(filename, mode='rb') as f:
@@ -506,13 +589,11 @@ class PyGlacier:
                 h.update(b)
         return h.hexdigest
 
-
     def generate_key(self):
         passphrase = getpass.getpass("Passphrase: ")
         salt = os.urandom(32)
         key = PBKDF2(passphrase, salt, dkLen=32, count=20000)
         return key
-
 
     def encrypt(self, key, plaintext):
         #key = self.generate_key()
@@ -524,12 +605,10 @@ class PyGlacier:
         print ciphertext
 
 
-
     def get_xattrs(self, filename):
         if not os.path.isfile(filename): return None
         x = xattr.xattr(filename)
         return x
-
 
     def set_xattr(self, filename, key, value):
         if not os.path.isfile(filename): return None
@@ -537,6 +616,7 @@ class PyGlacier:
         x[key] = value
 
 
+    #### Admin/EC2 functions ####
     def read_config(self, debug=False):
         """ Read config file """
         config = ConfigParser.RawConfigParser()
@@ -545,19 +625,17 @@ class PyGlacier:
         self.config = config
         self.encrypt = config.get('options', 'encrypt')
 
-
     def get_last_run(self, debug=False):
         """ Get timestamp of last execution """
         lastrun = time.localtime(int(self.config.get('log', 'last_run')))
         return lastrun
-
 
     def find_files(self, lastrun, debug=False):
         """ Find modified files to upload """
         try:
             dirlist = os.listdir(self.path)
         except OSError:
-            print "[error] unable to open path %s" % path
+            print "[error] unable to open path %s" % self.path
 
         newfiles = []
         dirlist.sort()
@@ -598,6 +676,25 @@ class PyGlacier:
 
         return newfiles
 
+    def list_jobs(self):
+        """ List jobs on vault """
+        DISP_JOB_WIDTH = 22
+        job_key_map = {'JobId': 'ID', 'VaultARN': 'Vault', 'JobDescription': 'Description', 'ArchiveId': 'Archive ID'}
+        job_key_order = ['JobId', 'VaultARN', 'Action', 'JobDescription', 'StatusCode', 'StatusMessage', 'Completed', 'CreationDate', 'CompletionDate', 'InventorySizeInBytes']
+        print "querying job listing..."
+        jobs = self.boto_glacier.aws_list_jobs()
+
+        ###
+#        cl_job = BotoGlacierJobGeneric(jobs)
+#        print "Python class 1:",cl_job
+
+        cl2_job = BotoGlacierJobList(jobs)
+        print "Python class:\n", cl2_job
+        ###
+
+        print "debug:"
+        print "jobs: ", jobs
+        self.pretty_print(job_key_map, job_key_order, jobs['JobList'], DISP_JOB_WIDTH)
 
     def upload(self):
         """ Create an archive / upload file """
@@ -657,61 +754,11 @@ class PyGlacier:
             with open('pyglacier.conf', 'wb') as configfile:
                 self.config.write(configfile)
 
-
-    def print_val(self, format, value):
-        if value is not None:
-            print format % value
-
-
-    def pretty_print(self, key_map, key_order, data, width=22):
-        for item in data:
-            for key in key_order:
-                if key in key_map:
-                    key_str = key_map[key]
-                elif len(str(key).translate(None, string.ascii_lowercase)) == 2:
-                    key_str = re.sub(r'(?<=.)([A-Z])', r' \1', key)
-                else:
-                    key_str = key
-                print "\t%*s : %s" % (-1 * width, key_str, item[key])
-
-            for key in set(item.keys()) - set(key_order):
-                if item[key] is None: continue
-                if key in key_map:
-                    key_str = key_map[key]
-                elif len(str(key).translate(None, string.ascii_lowercase)) == 2:
-                    key_str = re.sub(r'(?<=.)([A-Z])', r' \1', key)
-                else:
-                    key_str = key
-                print "\t%*s : %s" % (-1 * width, key_str, item[key])
-
-
-    def list_jobs(self):
-        """ List jobs on vault """
-        DISP_JOB_WIDTH = 22
-        job_key_map = {'JobId': 'ID', 'VaultARN': 'Vault', 'JobDescription': 'Description', 'ArchiveId': 'Archive ID'}
-        job_key_order = ['JobId', 'VaultARN', 'Action', 'JobDescription', 'StatusCode', 'StatusMessage', 'Completed', 'CreationDate', 'CompletionDate', 'InventorySizeInBytes']
-        print "querying job listing..."
-        jobs = self.boto_glacier.aws_list_jobs()
-
-        ###
-#        cl_job = BotoGlacierJobGeneric(jobs)
-#        print "Python class 1:",cl_job
-
-        cl2_job = BotoGlacierJobList(jobs)
-        print "Python class:\n", cl2_job
-        ###
-
-        print "debug:"
-        print "jobs: ", jobs
-        self.pretty_print(job_key_map, job_key_order, jobs['JobList'], DISP_JOB_WIDTH)
-
-
     def archive_remove(self, archive_id):
         """ Remove an archive """
         print "submitting job request to delete archive ID %s" % archive_id
         result = self.boto_glacier.aws_delete_archive(archive_id)
         print result
-
 
     def job_start_inventory(self):
         """ Submit job for archive inventory of vault """
@@ -719,13 +766,11 @@ class PyGlacier:
         list_job = self.boto_glacier.aws_job_start_inventory()
         print "inventory job:", list_job
 
-
     def job_start_download(self, archive_id):
         """ Submit job for archive retrieval """
         print "submitting job request to download archive ID %s" % archive_id
         download_job = self.boto_glacier.aws_job_start_download(archive_id)
         print "download job:", download_job
-
 
     def job_output_inventory(self, jobid):
         """ Retrieve output of vault inventory job """
@@ -761,7 +806,6 @@ class PyGlacier:
         print "debug:\n"
         print "job_status: ", job_status
         self.pretty_print(archive_key_map, archive_key_order, job_status['ArchiveList'], DISP_JOB_WIDTH)
-
 
     def job_output_download(self, jobid):
         """ Retrieve output of archive retrieval job / download archive contents """
@@ -811,37 +855,30 @@ class GlacierInterface():
         self.boto_glacier_l1 = BotoLayer1(aws_access_key_id=self.aws_access, aws_secret_access_key=self.aws_secret)
         self.boto_glacier_l2 = BotoLayer2(aws_access_key_id=self.aws_access, aws_secret_access_key=self.aws_secret)
 
-
     def aws_create_archive(self, file, description):
         aws_uploader = BotoConcurrentUploader(self.boto_glacier_l1, self.vault_name, 32 * (1 << 20))
         archive_id = aws_uploader.upload(file, description)
         return archive_id
 
-
     def aws_delete_archive(self, archive_id):
         return self.boto_glacier_l1.delete_archive(self.vault_name, archive_id)
-
 
     def aws_list_jobs(self):
         #job_list = self.boto_glacier_l1.list_jobs(self.vault_name, completed=False)
         job_list = self.boto_glacier_l1.list_jobs(self.vault_name)
         return job_list
 
-
     def aws_job_start_download(self, archive_id):
         job_id = self.boto_glacier_l1.initiate_job(self.vault_name, {"Description":"download-job", "Type":"archive-retrieval", "ArchiveId":"%s" % archive_id})
         return job_id
-
 
     def aws_job_start_inventory(self):
         job_id = self.boto_glacier_l1.initiate_job(self.vault_name, {"Description":"inventory-job", "Type":"inventory-retrieval", "Format":"JSON"})
         return job_id
 
-
     def aws_job_output_inventory(self, jobid):
         job_output = self.boto_glacier_l1.get_job_output(self.vault_name, jobid)
         return job_output
-
 
     def aws_job_output_download(self, jobid, range=None):
         vault = self.boto_glacier_l2.get_vault(self.vault_name)
@@ -855,10 +892,6 @@ def main():
     pyglacier = PyGlacier()
     pyglacier.run()
 
-
 if __name__ == "__main__":
     main()
-
-
-
 
